@@ -1,5 +1,6 @@
 import streamlit as st
 import time
+import base64
 
 # --- Konfigurasi halaman ---
 st.set_page_config(page_title="Quiz Time", page_icon="🕒")
@@ -21,6 +22,12 @@ if "final_shown" not in st.session_state:
 if "no_pressed" not in st.session_state:
     st.session_state.no_pressed = False
 
+# Flag pemutar suara setelah rerun
+if "play_sound" not in st.session_state:
+    st.session_state.play_sound = False
+if "play_sound_file" not in st.session_state:
+    st.session_state.play_sound_file = None
+
 # --- Daftar pertanyaan ---
 math_questions = [
     ("Berapakah hasil dari 5 × 3?", "15", "12", "15"),
@@ -41,6 +48,21 @@ def typing_effect(text, delay=0.03, icon="🤖 Chatbot"):
         time.sleep(delay)
     placeholder.markdown(f"**{icon}:** {typed_text}")
 
+# konverter file ke base64 untuk HTML autoplay
+def convert_to_base64(file_path):
+    with open(file_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+def play_sound_autoplay_html(file_path):
+    """Sisipi HTML autoplay berbasis base64 (eksperimental, browser mungkin blokir)."""
+    b64 = convert_to_base64(file_path)
+    audio_html = f"""
+        <audio autoplay>
+            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        </audio>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
+
 # --- Tampilkan percakapan sebelumnya ---
 for sender, msg in st.session_state.messages:
     if sender == "Wina":
@@ -48,6 +70,7 @@ for sender, msg in st.session_state.messages:
     elif sender == "Chatbot":
         st.markdown(f"**🤖 Chatbot:** {msg}")
     elif sender == "image":
+        # tampilkan gambar lokal/gif
         st.image(msg, width=250)
 
 # --- Intro sebelum kuis dimulai ---
@@ -59,11 +82,11 @@ if not st.session_state.intro_done:
     ]
 
     # Tampilkan intro dengan efek mengetik hanya sekali
-    if not any(msg in [line for line in intro_lines] for sender, msg in st.session_state.messages):
+    if not any(msg in intro_lines for sender, msg in st.session_state.messages):
         for line in intro_lines:
             typing_effect(line)
             st.session_state.messages.append(("Chatbot", line))
-            time.sleep(0.5)
+            time.sleep(0.4)
 
     if st.button("Mulai Kuis 💫"):
         st.session_state.intro_done = True
@@ -75,7 +98,7 @@ if not st.session_state.intro_done:
 elif st.session_state.started and st.session_state.step < len(math_questions):
     q, a1, a2, correct = math_questions[st.session_state.step]
 
-    # Efek mengetik hanya muncul sekali per pertanyaan
+    # Efek mengetik hanya sekali per pertanyaan
     if st.session_state.step not in st.session_state.typed_questions:
         st.session_state.typed_questions.add(st.session_state.step)
         typing_effect(q)
@@ -90,6 +113,9 @@ elif st.session_state.started and st.session_state.step < len(math_questions):
             if a1 == correct:
                 st.session_state.messages.append(("Chatbot", "✅ Benar sekali! 😍"))
                 st.session_state.messages.append(("image", "cat.gif"))
+                # tandai untuk mainkan suara setelah rerun
+                st.session_state.play_sound = True
+                st.session_state.play_sound_file = "happy_happy_cat.mp3"
                 st.session_state.step += 1
             else:
                 st.session_state.messages.append(("Chatbot", "❌ Coba lagi say 😉"))
@@ -101,6 +127,8 @@ elif st.session_state.started and st.session_state.step < len(math_questions):
             if a2 == correct:
                 st.session_state.messages.append(("Chatbot", "✅ Kerja Bagus ❤️"))
                 st.session_state.messages.append(("image", "cat.gif"))
+                st.session_state.play_sound = True
+                st.session_state.play_sound_file = "happy_happy_cat.mp3"
                 st.session_state.step += 1
             else:
                 st.session_state.messages.append(("Chatbot", "❌ Hmm, belum benar nih 😅"))
@@ -110,7 +138,7 @@ elif st.session_state.started and st.session_state.step < len(math_questions):
 # --- Pertanyaan terakhir ---
 elif st.session_state.step == len(math_questions):
     if not st.session_state.final_shown:
-        typing_effect(final_question, delay=0.04)
+        typing_effect(final_question, delay=0.03)
         st.session_state.final_shown = True
     else:
         st.markdown(f"**🤖 Chatbot:** {final_question}")
@@ -121,6 +149,8 @@ elif st.session_state.step == len(math_questions):
             st.session_state.messages.append(("Wina", "Yes 💕"))
             st.session_state.messages.append(("Chatbot", "🥰 Horee! ❤️"))
             st.session_state.messages.append(("image", "cat.gif"))
+            st.session_state.play_sound = True
+            st.session_state.play_sound_file = "happy_happy_cat.mp3"
             st.session_state.step += 1
             st.rerun()
 
@@ -134,4 +164,24 @@ elif st.session_state.step == len(math_questions):
 
 # --- Setelah semua selesai ---
 else:
-    st.markdown("**🤖 Chatbot:** dah PO coyy")
+    st.markdown("**🤖 Chatbot:** dah PO coyy 💞")
+
+# --- Mainkan suara setelah rerun jika diminta ---
+if st.session_state.play_sound and st.session_state.play_sound_file:
+    # 1) tampilkan audio player (user bisa klik Play)
+    try:
+        with open(st.session_state.play_sound_file, "rb") as f:
+            audio_bytes = f.read()
+            st.audio(audio_bytes, format="audio/mp3")
+    except FileNotFoundError:
+        st.error(f"File suara '{st.session_state.play_sound_file}' tidak ditemukan.")
+
+    # 2) coba sisipkan HTML autoplay (eksperimental; browser mungkin tetap blokir)
+    try:
+        play_sound_autoplay_html(st.session_state.play_sound_file)
+    except Exception:
+        pass
+
+    # reset flag supaya tidak berulang
+    st.session_state.play_sound = False
+    st.session_state.play_sound_file = None
